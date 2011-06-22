@@ -7,7 +7,7 @@
 #include <sys/ptrace.h>
 
 namespace mem_mon{
-
+	typedef unsigned int uint;
 	namespace consts{
 		const int max_line = 256;
 	}
@@ -20,22 +20,41 @@ namespace mem_mon{
 	}
 
 	template<class T>
-	void load_struct(T * obj, const pid_t & pid, const int & addr){
+	void load_struct(T * obj, const pid_t pid, int addr){
 		size_t i = sizeof(T);
 		while(i>0){
 			int in = ptrace(PTRACE_PEEKDATA, pid, (void *) addr, NULL);
-			memcpy(obj, (void *) in, (i>=sizeof(int)) ? sizeof(int) : i);
+			memcpy(obj, (void *) &in, (i>=sizeof(int)) ? sizeof(int) : i);
 			obj += sizeof(int);
+			addr += sizeof(int);
 			i -= sizeof(int);
 		}
 	}
 
-	std::string format(const int size){
+	std::string load_string(const pid_t pid, int addr){
+		int in, tmp;
+		char buf[sizeof(int)];
+		std::string res;
+
+		do{
+			tmp = res.length();
+			in = ptrace(PTRACE_PEEKDATA, pid, (void *) addr, NULL);
+			strncpy(buf, (char *) &in, sizeof(int));
+			res.append(buf, 0, sizeof(int));
+			addr += sizeof(int);
+			memset(buf, 0, sizeof(int));
+		}while(res.length()-tmp == sizeof(int));
+
+		return res;
+	}
+	
+	template<class T>
+	std::string format(const T size){
 		if(size < 1024)
 			return str(size) + "B";
 		if(size < 1048576) // 1024*1024=1048576
 			return str(size/1024) + "KB";
-		return str(size/1024) + "MB";
+		return str(size/(1024*1024)) + "MB";
 	}
 	
 	//actually it's kernel structue but I couldn't find its header file. I copied it from:

@@ -8,8 +8,10 @@
 namespace mem_mon{
 
 	class system{
+		typedef unsigned int uint;
+		typedef unsigned long long ull;
 		struct system_info{
-			int total_ram, free_ram, total_swap, free_swap;
+			ull total_ram, free_ram, total_swap, free_swap;
 		};
 		
 		public:
@@ -26,36 +28,36 @@ namespace mem_mon{
 		/*
 		 * Returns total amount of free and used physical memory in the system. Returned amount is in kB.
 		 */
-		int get_total_ram() const{
+		ull get_total_ram() const{
 			return res.total_ram;
 		}
 
-		int get_used_ram() const{
+		ull get_used_ram() const{
 			return res.total_ram-res.free_ram;
 		}
 
 		/*
 		 * Returns the amount of physical RAM unused by the system.
 		 */
-		int get_free_ram() const{
+		ull get_free_ram() const{
 			return res.free_ram;
 		}
 
 		/*
 		 * Returns total amount of physical swap memory.
 		 */
-		int get_total_swap() const{
+		ull get_total_swap() const{
 			return res.total_swap;
 		}
 
-		int get_used_swap() const{
+		ull get_used_swap() const{
 			return res.total_swap - res.free_swap;
 		}
 
 		/*
 		 * Returns total amount of swap memory free.
 		 */
-		int get_free_swap() const{
+		ull get_free_swap() const{
 			return res.free_swap;
 		}
 

@@ -18,7 +18,7 @@ system & system::get_instance(){
 }
 
 ostream & operator<<(std::ostream &os, const system & sys){
-	os << "*** Output from mem_mon::system ***" << endl << "Page size: " << sys.get_page_size() << endl << "Total RAM: " << sys.get_total_ram() << endl << "RAM in use: " << sys.get_used_ram() << endl << "Free RAM: " << sys.get_free_ram() << endl << "Total swap: " << sys.get_total_swap() << endl << "Swap in use: " << sys.get_used_swap() << endl << "Free swap: " << sys.get_free_swap() << endl;
+	os << "*** Output from mem_mon::system ***" << endl << "Page size: " << format(sys.get_page_size()) << endl << "Total RAM: " << format(sys.get_total_ram()) << endl << "RAM in use: " << format(sys.get_used_ram()) << endl << "Free RAM: " << format(sys.get_free_ram()) << endl << "Total swap: " << format(sys.get_total_swap()) << endl << "Swap in use: " << format(sys.get_used_swap()) << endl << "Free swap: " << format(sys.get_free_swap()) << endl;
 	os << "*** End of output from mem_mon::system ***" << endl;
 	return os;
 }
@@ -31,16 +31,16 @@ void system::get_from_proc_meminfo(system_info & info){
 		ifs.getline(buf, consts::max_line);
 		string line(buf);
 		if(line.find(mem_total) != string::npos)
-			info.total_ram = atoi(&(buf[mem_total.size()]));
+			info.total_ram = (ull) atoi(&(buf[mem_total.size()])) * 1024;
 
 		if(line.find(mem_free) != string::npos)
-			info.free_ram = atoi(&(buf[mem_free.size()]));
+			info.free_ram = (ull) atoi(&(buf[mem_free.size()])) * 1024;
 
 		if(line.find(swap_total) != string::npos)
-			info.total_swap = atoi(&(buf[swap_total.size()]));
+			info.total_swap = (ull) atoi(&(buf[swap_total.size()])) * 1024;
 
 		if(line.find(swap_free) != string::npos)
-			info.free_swap = atoi(&(buf[swap_free.size()]));
+			info.free_swap = (ull) atoi(&(buf[swap_free.size()])) * 1024;
 	}
 }
 
