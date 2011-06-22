@@ -1,25 +1,33 @@
 CC=gcc
 CPP=g++
-CFLAGS=-Wall
+CFLAGS=-Wall -I include/
 
-all: test memtrace
+all: memtrace tests
 
-test: test.o system.o process.o
-	$(CPP) $(CFLAGS) test.o system.o process.o -o test
-	
-test.o: test.cpp
+system.o: src/system.cpp
 	$(CPP) $(CFLAGS) $< -c
 
-system.o: system.cpp
+process.o: src/process.cpp
 	$(CPP) $(CFLAGS) $< -c
 
-process.o: process.cpp
-	$(CPP) $(CFLAGS) $< -c
-
-memtrace: memtrace.cpp
+memtrace: src/memtrace.cpp
 	$(CPP) $(CFLAGS) $< -o memtrace
 
+tests: libtest mthreaded signals
+
+libtest: libtest.o system.o process.o
+	$(CPP) $(CFLAGS) libtest.o system.o process.o -o $@
+	
+libtest.o: tests/libtest.cpp
+	$(CPP) $(CFLAGS) $< -c
+
+mthreaded: tests/mthreaded.cpp
+	$(CPP) $(CFLAGS) -static -lrt -lpthread -o $@ $<
+
+signals: tests/signals.cpp
+	$(CPP) $(CFLAGS) -static $< -o $@
+
 clean:
-	-@rm test process.o system.o test.o memtrace &> /dev/null || true
+	-@rm process.o system.o libtest libtest.o mthreaded signals memtrace &> /dev/null || true
 
 .PHONY: clean
