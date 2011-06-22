@@ -17,7 +17,6 @@ void * thread_function(void * arg){
 
 	open("other", 0);
 
-	pause();
 	return NULL;
 }
 

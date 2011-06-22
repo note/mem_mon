@@ -10,12 +10,14 @@ namespace mem_mon{
 		virtual void * malloc_update(size_t size, const void * caller) = 0;
 		virtual void * realloc_update(void * ptr, size_t size, const void * caller) = 0;
 		virtual void free_update(void * ptr, const void * caller) = 0;
+		virtual ~abstract_malloc_observer();
 	};
 
 	class abstract_timer{
 		public:
 		virtual void start() = 0;
 		virtual void stop() = 0;
+		virtual ~abstract_timer();
 	};
 
 	class malloc_hooker{

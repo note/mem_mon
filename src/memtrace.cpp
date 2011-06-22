@@ -11,7 +11,175 @@
 
 using namespace std;
 using namespace mem_mon;
-map<int, string> descriptors;
+
+map<int, string> descriptors; //threads share descriptors table
+
+//see section error return: http://www.win.tue.nl/~aeb/linux/lk/lk-4.html
+bool is_ok(const int status){
+	return status>-1 || status<-125;
+}
+
+class thread;
+
+class syscall_observer{
+	protected:
+	thread * observed_thread;
+	public:
+	syscall_observer(thread * observed_thread) : observed_thread(observed_thread){}
+	virtual void handle_enter(user_regs_struct * regs) = 0;
+	virtual void handle_return(user_regs_struct * regs) = 0;
+	virtual ~syscall_observer(){}
+};
+
+class thread{
+	public:
+	thread(pid_t pid);
+	thread(){}
+	void received(user_regs_struct * regs);
+	bool returning;
+	syscall_observer * observer;
+	pid_t id;
+	int current_break;
+};
+
+
+/********** syscall_observers **********/
+
+class mmap_pgoff_observer : public syscall_observer{
+	public:
+	mmap_pgoff_observer(thread * observed_thread) : syscall_observer(observed_thread){}
+	void handle_enter(user_regs_struct * regs){
+		filename = descriptors[regs->edi];
+		cout << "#" << regs->edi << endl;
+		cout << "$$" << filename << endl;
+		cout << "Process is trying to map " << format(regs->ecx) << endl;
+	}
+
+	void handle_return(user_regs_struct * regs){
+		if(is_ok(regs->eax)){
+			if(filename.find("/dev/shm/") == 0)
+				cout << "Process has mapped " << format(regs->ecx) << " from shared memory" << endl;
+			else
+				cout << "Process has mapped " << format(regs->ecx) << " from the file " << filename << endl;
+		}else{
+			if(filename.find("/dev/shm/") == 0)
+				cout << "Process has failed to map " << format(regs->ecx) << " from shared memory" << endl;
+			else
+				cout << "Process has failed to map " << format(regs->ecx) << " from the file " << filename << endl;
+		}
+
+	}
+
+	private:
+	string filename;
+};
+
+class brk_observer : public syscall_observer{
+	public:
+	brk_observer(thread * observed_thread) : syscall_observer(observed_thread){}
+	void handle_enter(user_regs_struct * regs){
+		int diff = regs->ebx - observed_thread->current_break;
+		if(regs->ebx){ //process is trying to change break
+			if(diff>0)
+				cout << "Process is trying to allocate " << format(diff) << endl;
+			else
+				cout << "Process is trying to deallocate " << format(-diff) << endl;
+		}
+	}
+	
+	void handle_return(user_regs_struct * regs){
+		int diff = regs->eax-observed_thread->current_break;
+		if(observed_thread->current_break != -1 && diff!=0){
+			if(diff>0)
+				cout << "Process has allocated " << format(diff) << endl;
+			else
+				cout << "Process has deallocated " << format(-diff) << endl;
+		}
+		observed_thread->current_break = regs->eax;
+
+	}
+};
+
+class open_observer : public syscall_observer{
+	string filename;
+	public:
+	open_observer(thread * observed_thread) : syscall_observer(observed_thread){}
+	void handle_enter(user_regs_struct * regs){
+		filename = load_string(observed_thread->id, regs->ebx);
+	}
+
+	void handle_return(user_regs_struct * regs){
+		if(is_ok(regs->eax))
+			descriptors[regs->eax] = filename;
+	}
+
+};
+
+class old_mmap_observer : public syscall_observer{
+	mmap_arg_struct mmap_arg;
+	public:
+	old_mmap_observer(thread * observed_thread) : syscall_observer(observed_thread){}
+	void handle_enter(user_regs_struct * regs){
+		load_struct(&mmap_arg, observed_thread->id, regs->ebx);
+		cout << "Process is trying to map " << format(mmap_arg.len) << endl;
+	}
+
+	void handle_return(user_regs_struct * regs){
+		if(regs->eax != -1)
+			cout << "Process has mapped " << format(mmap_arg.len) << endl;
+	}
+};
+
+class munmap_observer : public syscall_observer{
+	public:
+	munmap_observer(thread * observed_thread) : syscall_observer(observed_thread){}
+	void handle_enter(user_regs_struct * regs){
+		cout << "Process is trying to unmap " << format(regs->ecx) << endl;
+	}
+
+	void handle_return(user_regs_struct * regs){
+		if(regs->eax == 0)
+			cout << "Process has unmapped " << format(regs->ecx) << endl;
+	}
+};
+
+/********** end of syscall_observers **********/
+
+thread::thread(pid_t pid) : returning(false), observer(NULL), id(pid), current_break(-1) {}
+
+void thread::received(user_regs_struct * regs){
+	if(!returning){
+		switch(regs->orig_eax){
+			case 5:
+				observer = new open_observer(this);
+			break;
+			case 45:
+				observer = new brk_observer(this);
+			break;
+			case 90:
+				observer = new old_mmap_observer(this);
+			break;
+			case 91:
+				observer = new munmap_observer(this);
+			break;
+			case 192:
+				observer = new mmap_pgoff_observer(this);
+			break;
+		}
+		if(observer)
+			observer->handle_enter(regs);
+	}else{
+		if(observer){
+			observer->handle_return(regs);
+			delete observer;
+			observer = NULL;
+		}
+	}
+
+	returning = !returning;
+}
+
+map<int, thread> threads;
 typedef unsigned long long ull;
 
 #define M_OFFSETOF(STRUCT, ELEMENT) \
@@ -32,35 +200,8 @@ void view_help(){
 	exit(0);
 }
 
-//see section error return: http://www.win.tue.nl/~aeb/linux/lk/lk-4.html
-bool is_ok(const int status){
-	return status>-1 || status<-125;
-}
-
 void print(user_regs_struct * regs){
 	cout << "eax" << regs->eax << endl << "ebx" << regs->ebx << endl << "ecx" << regs->ecx << endl << "edx" << regs->edx << endl << "esi" << regs->esi << endl << "edi" << regs->edi << endl;
-}
-
-void handle_mmap_pgoff(user_regs_struct * regs, bool returning){
-	static string filename;
-	if(!returning){
-		filename = descriptors[regs->edi];
-		cout << "#" << regs->edi << endl;
-		cout << "$$" << filename << endl;
-		cout << "Process is trying to map " << format(regs->ecx) << endl;
-	}else{
-		if(is_ok(regs->eax)){
-			if(filename.find("/dev/shm/") == 0)
-				cout << "Process has mapped " << format(regs->ecx) << " from shared memory" << endl;
-			else
-				cout << "Process has mapped " << format(regs->ecx) << " from the file " << filename << endl;
-		}else{
-			if(filename.find("/dev/shm/") == 0)
-				cout << "Process has failed to map " << format(regs->ecx) << " from shared memory" << endl;
-			else
-				cout << "Process has failed to map " << format(regs->ecx) << " from the file " << filename << endl;
-		}
-	}
 }
 
 int main(int argc, const char *argv[]){
@@ -95,6 +236,9 @@ int main(int argc, const char *argv[]){
 	}else{
 		wait(NULL);
 
+		thread th(id);
+		threads[id] = th;
+
     		user_regs_struct regs;
 		if(ptrace(PTRACE_SYSCALL, id, NULL, NULL) == -1)
 			perror("ptrace_syscall");
@@ -103,83 +247,14 @@ int main(int argc, const char *argv[]){
 
 		int res = ptrace(PTRACE_GETREGS, id, NULL, &regs);
 		bool returning = false;
-		int current_break = -1, status;
+		int status;
 		string str;
 		while(res != -1){
-
 			ull eax_offset = M_OFFSETOF(struct user, regs.orig_eax);
-			ull start_offset = M_OFFSETOF(struct user, start_stack);
 			ull eax = ptrace(PTRACE_PEEKUSER, id, eax_offset, NULL);
-			ull start = ptrace(PTRACE_PEEKUSER, id, start_offset, NULL);
 			cout << "EAX: " << eax << endl;
-			cout << "stack: " << start << endl;
-
-
-			char in[consts::max_line];
-			//cout << regs.orig_eax << endl;
-			switch(regs.orig_eax){
-				case 5:
-				if(!returning)
-					str = load_string(id, regs.ebx);
-				else{
-					//print(&regs);
-					cout << str << endl;
-					if(regs.eax > 0)
-						descriptors[regs.eax] = str;
-				}
-				break;
-				case 45:
-
-				if(returning){
-					int diff = regs.eax-current_break;
-					if(current_break != -1 && diff!=0){
-						if(diff>0)
-							cout << "Process has allocated " << format(diff) << endl;
-						else
-							cout << "Process has deallocated " << format(-diff) << endl;
-					}
-					current_break = regs.eax;
-				}else{
-					int diff = regs.ebx-current_break;
-					if(regs.ebx){ //process is trying to change break
-						if(diff>0)
-							cout << "Process is trying to allocate " << format(diff) << endl;
-						else
-							cout << "Process is trying to deallocate " << format(-diff) << endl;
-					}else //process just checks current break
-						break;
-				}
-				if(stepping_mode)
-					cin.getline(in, consts::max_line);
-				break;
-
-				case 90:
-				mmap_arg_struct mmap_arg;
-				if(!returning){
-					load_struct(&mmap_arg, id, regs.ebx);
-					cout << "Process is trying to map " << format(mmap_arg.len) << endl;
-				}else{
-					if(regs.eax != -1)
-						cout << "Process has mapped " << format(mmap_arg.len) << endl;
-				}
-				break;
-
-				case 91:
-				if(!returning){
-					cout << "Process is trying to unmap " << format(regs.ecx) << endl;
-				}else{
-					if(regs.eax == 0)
-						cout << "Process has unmapped " << format(regs.ecx) << endl;
-				}
-				break;
-
-				case 192:
-				handle_mmap_pgoff(&regs, returning);
-				break;
-
-			}
-
-			returning = !returning;
+			
+			threads[id].received(&regs);
 
 			if(ptrace(PTRACE_SYSCALL, id, NULL, NULL) == -1)
 				perror("ptrace_syscall");
