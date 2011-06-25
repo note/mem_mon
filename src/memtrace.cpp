@@ -40,32 +40,33 @@ class thread{
 	syscall_observer * observer;
 	pid_t id;
 	int current_break;
+	void print_notification(const string & msg);
 };
-
 
 /********** syscall_observers **********/
 
 class mmap_pgoff_observer : public syscall_observer{
+	int size;
 	public:
 	mmap_pgoff_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 	void handle_enter(user_regs_struct * regs){
+		size = regs->ecx;
 		filename = descriptors[regs->edi];
-		cout << "#" << regs->edi << endl;
-		cout << "$$" << filename << endl;
-		cout << "Process is trying to map " << format(regs->ecx) << endl;
+		observed_thread->print_notification("Process is trying to map " + format(size) + '\n');
 	}
 
 	void handle_return(user_regs_struct * regs){
 		if(is_ok(regs->eax)){
+
 			if(filename.find("/dev/shm/") == 0)
-				cout << "Process has mapped " << format(regs->ecx) << " from shared memory" << endl;
+				observed_thread->print_notification("Process has mapped " + format(size) + " from shared memory");
 			else
-				cout << "Process has mapped " << format(regs->ecx) << " from the file " << filename << endl;
+				observed_thread->print_notification("Process has mapped " + format(size) + " from the file " + filename);
 		}else{
 			if(filename.find("/dev/shm/") == 0)
-				cout << "Process has failed to map " << format(regs->ecx) << " from shared memory" << endl;
+				observed_thread->print_notification("Process has failed to map " + format(size) + " from shared memory");
 			else
-				cout << "Process has failed to map " << format(regs->ecx) << " from the file " << filename << endl;
+				observed_thread->print_notification("Process has failed to map " + format(size) + " from the file " + filename);
 		}
 
 	}
@@ -81,9 +82,9 @@ class brk_observer : public syscall_observer{
 		int diff = regs->ebx - observed_thread->current_break;
 		if(regs->ebx){ //process is trying to change break
 			if(diff>0)
-				cout << "Process is trying to allocate " << format(diff) << endl;
+				observed_thread->print_notification("Process is trying to allocate " + format(diff));
 			else
-				cout << "Process is trying to deallocate " << format(-diff) << endl;
+				observed_thread->print_notification("Process is trying to deallocate " + format(-diff));
 		}
 	}
 	
@@ -91,9 +92,9 @@ class brk_observer : public syscall_observer{
 		int diff = regs->eax-observed_thread->current_break;
 		if(observed_thread->current_break != -1 && diff!=0){
 			if(diff>0)
-				cout << "Process has allocated " << format(diff) << endl;
+				observed_thread->print_notification("Process has allocated " + format(diff));
 			else
-				cout << "Process has deallocated " << format(-diff) << endl;
+				observed_thread->print_notification("Process has deallocated " + format(-diff));
 		}
 		observed_thread->current_break = regs->eax;
 
@@ -121,12 +122,12 @@ class old_mmap_observer : public syscall_observer{
 	old_mmap_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 	void handle_enter(user_regs_struct * regs){
 		load_struct(&mmap_arg, observed_thread->id, regs->ebx);
-		cout << "Process is trying to map " << format(mmap_arg.len) << endl;
+		observed_thread->print_notification("Process is trying to map " + format(mmap_arg.len));
 	}
 
 	void handle_return(user_regs_struct * regs){
 		if(regs->eax != -1)
-			cout << "Process has mapped " << format(mmap_arg.len) << endl;
+			observed_thread->print_notification("Process has mapped " + format(mmap_arg.len));
 	}
 };
 
@@ -134,16 +135,18 @@ class munmap_observer : public syscall_observer{
 	public:
 	munmap_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 	void handle_enter(user_regs_struct * regs){
-		cout << "Process is trying to unmap " << format(regs->ecx) << endl;
+		observed_thread->print_notification("Process is trying to unmap " + format(regs->ecx));
 	}
 
 	void handle_return(user_regs_struct * regs){
 		if(regs->eax == 0)
-			cout << "Process has unmapped " << format(regs->ecx) << endl;
+			observed_thread->print_notification("Process has unmapped " + format(regs->ecx));
 	}
 };
 
 /********** end of syscall_observers **********/
+
+map<int, thread *> threads;
 
 thread::thread(pid_t pid) : returning(false), observer(NULL), id(pid), current_break(-1) {}
 
@@ -179,7 +182,13 @@ void thread::received(user_regs_struct * regs){
 	returning = !returning;
 }
 
-map<int, thread> threads;
+void thread::print_notification(const string & notification){
+	if(threads.size() > 1)
+		cout << "[pid: " << id << "] " << notification << endl;
+	else
+		cout << notification << endl;
+}
+
 typedef unsigned long long ull;
 
 #define M_OFFSETOF(STRUCT, ELEMENT) \
@@ -202,6 +211,18 @@ void view_help(){
 
 void print(user_regs_struct * regs){
 	cout << "eax" << regs->eax << endl << "ebx" << regs->ebx << endl << "ecx" << regs->ecx << endl << "edx" << regs->edx << endl << "esi" << regs->esi << endl << "edi" << regs->edi << endl;
+}
+
+/**
+ * @return pid of handled child
+ */
+pid_t handle_child(pid_t parent_id){
+	unsigned long child_id;
+	ptrace(PTRACE_GETEVENTMSG, parent_id, NULL, &child_id);
+	threads[child_id] = new thread(child_id);
+	ptrace(PTRACE_ATTACH, child_id, NULL, NULL);
+	cout << "Started new thread with id: " << child_id << endl;
+	return (pid_t) child_id;
 }
 
 int main(int argc, const char *argv[]){
@@ -236,34 +257,50 @@ int main(int argc, const char *argv[]){
 	}else{
 		wait(NULL);
 
-		thread th(id);
-		threads[id] = th;
+		threads[id] = new thread(id);
 
     		user_regs_struct regs;
-		if(ptrace(PTRACE_SYSCALL, id, NULL, NULL) == -1)
-			perror("ptrace_syscall");
+		ptrace(PTRACE_SETOPTIONS, id, NULL, PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXIT);
 
-		wait(NULL);
-
-		int res = ptrace(PTRACE_GETREGS, id, NULL, &regs);
-		bool returning = false;
+ 		if(ptrace(PTRACE_SYSCALL, id, NULL, NULL) == -1)
+ 			perror("ptrace_syscall");
+		
+		int res = 0;
 		int status;
-		string str;
-		while(res != -1){
-			ull eax_offset = M_OFFSETOF(struct user, regs.orig_eax);
-			ull eax = ptrace(PTRACE_PEEKUSER, id, eax_offset, NULL);
-			cout << "EAX: " << eax << endl;
-			
-			threads[id].received(&regs);
+		pid_t child_id;
+		while(res != -1){ // main loop
+			id = waitpid(-1, &status, __WALL); // you must use the __WALL option inorder to receive notifications from threads created by the child process
 
+			if(status>>16 == PTRACE_EVENT_EXIT)
+				cout << "PTRACE EVENT EXIT" << id << endl;
+
+			if(WIFEXITED(status)){
+				cout << "exited" << id << endl;
+				threads.erase(id);
+				if(threads.empty())
+					break;
+				continue;
+			}
+			
+			res = ptrace(PTRACE_GETREGS, id, NULL, &regs);
+			
+			siginfo_t siginfo;
+			ptrace(PTRACE_GETSIGINFO, id, NULL, &siginfo);
+			child_id = -1;
+			if(siginfo.si_signo == SIGTRAP){ // action caught by ptrace
+				if(status>>16 == PTRACE_EVENT_CLONE)
+					child_id = handle_child(id);
+
+				threads[id]->received(&regs);
+			}else // real signal was delivered
+				cout << "Received signal number " << siginfo.si_signo << endl;
+			
+			if(child_id > 0)
+				if(ptrace(PTRACE_SYSCALL, child_id, NULL, NULL) == -1)
+					perror("ptrace_syscall2");
+			
 			if(ptrace(PTRACE_SYSCALL, id, NULL, NULL) == -1)
 				perror("ptrace_syscall");
-
-			wait(&status);
-			if(WIFEXITED(status))
-				break;
-
-			res = ptrace(PTRACE_GETREGS, id, NULL, &regs);
 		}
 
 	}
