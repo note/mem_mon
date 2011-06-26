@@ -31,5 +31,9 @@ int main(int argc, const char *argv[]){
 	int mem_d = shm_open(MEM_NAME, O_RDWR | O_CREAT, 0600);
 	ftruncate(mem_d, 2048);
 
+	void * shared_arr = mmap(NULL, 2048, PROT_READ, MAP_SHARED, mem_d, 0);
+        if(shared_arr == (void *) -1)
+                perror("mmap error");
+
 	return 0;
 }

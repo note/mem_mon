@@ -8,14 +8,16 @@
 #include <sys/user.h>
 #include "common.h"
 #include <map>
+#include <sys/mman.h>
 
 using namespace std;
 using namespace mem_mon;
 
 map<int, string> descriptors; //threads share descriptors table
 
-//see section error return: http://www.win.tue.nl/~aeb/linux/lk/lk-4.html
 bool is_ok(const int status){
+	//Here the range [-125,-1] is reserved for errors (the constant 125 is version and architecture dependent) and other values are OK.
+	//from: http://www.win.tue.nl/~aeb/linux/lk/lk-4.html (see error return section)
 	return status>-1 || status<-125;
 }
 
@@ -40,6 +42,7 @@ class thread{
 	syscall_observer * observer;
 	pid_t id;
 	int current_break;
+	bool active;
 	void print_notification(const string & msg);
 };
 
@@ -47,28 +50,39 @@ class thread{
 
 class mmap_pgoff_observer : public syscall_observer{
 	int size;
+	int orig_esi;
 	public:
 	mmap_pgoff_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 	void handle_enter(user_regs_struct * regs){
 		size = regs->ecx;
 		filename = descriptors[regs->edi];
-		observed_thread->print_notification("Process is trying to map " + format(size) + '\n');
+		string msg;
+		if(regs->esi & MAP_PRIVATE)
+			msg = "Process is trying to create private mapping of size " + format(size);
+		else
+			msg = "Process is trying to create shared mapping of size " +format(size);
+		
+		msg += (regs->esi & MAP_ANONYMOUS) ? " (anonymous)" : " from the file " + filename;
+		observed_thread->print_notification(msg);
+		orig_esi = regs->esi;
 	}
 
 	void handle_return(user_regs_struct * regs){
+		string msg;
 		if(is_ok(regs->eax)){
-
-			if(filename.find("/dev/shm/") == 0)
-				observed_thread->print_notification("Process has mapped " + format(size) + " from shared memory");
+			if(regs->esi & MAP_PRIVATE)
+				msg = "Process has created private mapping of size " + format(size);
 			else
-				observed_thread->print_notification("Process has mapped " + format(size) + " from the file " + filename);
+				msg = "Process has created shared mapping of size " + format(size);
 		}else{
-			if(filename.find("/dev/shm/") == 0)
-				observed_thread->print_notification("Process has failed to map " + format(size) + " from shared memory");
+			if(orig_esi & MAP_PRIVATE)
+				msg = "Process has failed to create private mapping of size " + format(size);
 			else
-				observed_thread->print_notification("Process has failed to map " + format(size) + " from the file " + filename);
+				msg = "Process has failed to create shared mapping of size " + format(size);
 		}
-
+			
+		msg += (orig_esi & MAP_ANONYMOUS) ? " (anonymous)" : " from the file " + filename;
+		observed_thread->print_notification(msg);
 	}
 
 	private:
@@ -122,12 +136,24 @@ class old_mmap_observer : public syscall_observer{
 	old_mmap_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 	void handle_enter(user_regs_struct * regs){
 		load_struct(&mmap_arg, observed_thread->id, regs->ebx);
-		observed_thread->print_notification("Process is trying to map " + format(mmap_arg.len));
+		if(descriptors[mmap_arg.fd].find("/dev/shm/") == 0)
+			observed_thread->print_notification("Process is trying to map " + format(mmap_arg.len) + " from shared memory");
+		else
+			observed_thread->print_notification("Process is trying to map " + format(mmap_arg.len) + " from the file " + descriptors[mmap_arg.fd]);
 	}
 
 	void handle_return(user_regs_struct * regs){
-		if(regs->eax != -1)
-			observed_thread->print_notification("Process has mapped " + format(mmap_arg.len));
+		if(is_ok(regs->eax)){
+			if(descriptors[mmap_arg.fd].find("/dev/shm/") == 0)
+				observed_thread->print_notification("Process has mapped " + format(mmap_arg.len) + " from shared memory");
+			else
+				observed_thread->print_notification("Process has mapped " + format(mmap_arg.len) + " from the file " + descriptors[mmap_arg.fd]);
+		}else{
+			if(descriptors[mmap_arg.fd].find("/dev/shm/") == 0)
+				observed_thread->print_notification("Process has failed to map " + format(mmap_arg.len) + " from shared memory");
+			else
+				observed_thread->print_notification("Process has failed " + format(mmap_arg.len) + " from the file " + descriptors[mmap_arg.fd]);
+		}
 	}
 };
 
@@ -139,7 +165,7 @@ class munmap_observer : public syscall_observer{
 	}
 
 	void handle_return(user_regs_struct * regs){
-		if(regs->eax == 0)
+		if(is_ok(regs->eax))
 			observed_thread->print_notification("Process has unmapped " + format(regs->ecx));
 	}
 };
@@ -148,7 +174,7 @@ class munmap_observer : public syscall_observer{
 
 map<int, thread *> threads;
 
-thread::thread(pid_t pid) : returning(false), observer(NULL), id(pid), current_break(-1) {}
+thread::thread(pid_t pid) : returning(false), observer(NULL), id(pid), current_break(-1), active(false) {}
 
 void thread::received(user_regs_struct * regs){
 	if(!returning){
@@ -220,9 +246,16 @@ pid_t handle_child(pid_t parent_id){
 	unsigned long child_id;
 	ptrace(PTRACE_GETEVENTMSG, parent_id, NULL, &child_id);
 	threads[child_id] = new thread(child_id);
-	ptrace(PTRACE_ATTACH, child_id, NULL, NULL);
-	cout << "Started new thread with id: " << child_id << endl;
+	//if(ptrace(PTRACE_ATTACH, (pid_t) child_id, NULL, NULL) == -1)
+	//	perror("ptrace_attach");
+	threads[parent_id]->print_notification("Started new thread with id: " + str(child_id));
 	return (pid_t) child_id;
+}
+
+void handle_exiting(pid_t id){
+	int status;
+	ptrace(PTRACE_GETEVENTMSG, id, NULL, &status);
+	threads[id]->print_notification("Process is exiting with status: " + str(status));
 }
 
 int main(int argc, const char *argv[]){
@@ -265,24 +298,29 @@ int main(int argc, const char *argv[]){
  		if(ptrace(PTRACE_SYSCALL, id, NULL, NULL) == -1)
  			perror("ptrace_syscall");
 		
-		int res = 0;
 		int status;
 		pid_t child_id;
-		while(res != -1){ // main loop
+		while(1){ // main loop
+			//cout << "MAIN LOOP" << endl;
 			id = waitpid(-1, &status, __WALL); // you must use the __WALL option inorder to receive notifications from threads created by the child process
+			
+			if(threads.find(id) == threads.end())
+				threads[id] = new thread(id);
 
 			if(status>>16 == PTRACE_EVENT_EXIT)
-				cout << "PTRACE EVENT EXIT" << id << endl;
+				handle_exiting(id);
 
 			if(WIFEXITED(status)){
-				cout << "exited" << id << endl;
+				threads[id]->print_notification("Process has exited with status:" + str(status));
 				threads.erase(id);
 				if(threads.empty())
 					break;
 				continue;
 			}
 			
-			res = ptrace(PTRACE_GETREGS, id, NULL, &regs);
+			if(ptrace(PTRACE_GETREGS, id, NULL, &regs) == -1)
+				exit_with_perror("ptrace_getregs error");
+			//cout << "eax: " << regs.orig_eax << " id: " << id << endl;
 			
 			siginfo_t siginfo;
 			ptrace(PTRACE_GETSIGINFO, id, NULL, &siginfo);
@@ -292,12 +330,16 @@ int main(int argc, const char *argv[]){
 					child_id = handle_child(id);
 
 				threads[id]->received(&regs);
-			}else // real signal was delivered
-				cout << "Received signal number " << siginfo.si_signo << endl;
+			}else{ // real signal was delivered
+				if(siginfo.si_signo == 19 && !threads[id]->active) // new thread is initially stopped with a SIGSTOP, there's no sense in displaying info about this
+					threads[id]->active = true;
+				else
+					threads[id]->print_notification("Received signal number " + str(siginfo.si_signo));
+			}
 			
-			if(child_id > 0)
-				if(ptrace(PTRACE_SYSCALL, child_id, NULL, NULL) == -1)
-					perror("ptrace_syscall2");
+			//if(child_id > 0)
+			//	if(ptrace(PTRACE_SYSCALL, child_id, NULL, NULL) == -1)
+			//		perror(string("ptrace_syscall2 " + str(child_id)).c_str());
 			
 			if(ptrace(PTRACE_SYSCALL, id, NULL, NULL) == -1)
 				perror("ptrace_syscall");

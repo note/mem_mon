@@ -9,13 +9,18 @@
 #include <unistd.h>
 #include <iostream>
 #include <fstream>
+#include <sys/mman.h>
 
 using namespace std;
 
 void * thread_function(void * arg){
 	sleep(3);
 
-	open("other", 0);
+	int fd = open("other", 0);
+	void * mem;
+	if((mem = mmap(NULL, 24, PROT_READ, MAP_PRIVATE, fd, 0)) == (void *) -1)
+		perror("mmap error");
+
 
 	return NULL;
 }
