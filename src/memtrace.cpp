@@ -1,4 +1,6 @@
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <sys/ptrace.h>
 #include <iostream>
@@ -210,9 +212,9 @@ void thread::received(user_regs_struct * regs){
 
 void thread::print_notification(const string & notification){
 	if(threads.size() > 1)
-		cout << "[pid: " << id << "] " << notification << endl;
+		cerr << "[pid: " << id << "] " << notification << endl;
 	else
-		cout << notification << endl;
+		cerr << notification << endl;
 }
 
 typedef unsigned long long ull;
@@ -225,13 +227,25 @@ void exit_with_msg(const char * msg){
 	exit(1);
 }
 
+void exit_with_msg(const string & msg){
+	cout << msg << endl;
+	exit(1);
+}
+
 void exit_with_perror(const char * msg){
 	perror(msg);
 	exit(1);
 }
 
 void view_help(){
-	cout << "mem_mon" << endl << "Copyright Michal Sitko" << endl;
+	cout << "memtrace" << endl << "Copyright Michal Sitko" << endl << endl;
+	cout << "usage: memtrace [-hsfo] command [arg ...]" << endl << "-h display help information" << endl
+	<< "-s stepping mode, memtrace will stop executing and enter memtrace console after every syscall" << endl << "-f follow threads created by process being observed" << endl
+	<< "-o file - send memtrace output to file instead of stderr" << endl << endl;
+	cout << "memtrace console commands:" << endl << " next (abbraviated: n) - step execution" << endl << " system (sys s) - system memory info" << endl <<
+	" process (proc p) - process memory info" << endl << " run (r) - exit stopping mode, continue tracing, but not in stepping mode" << endl <<
+	" detach (d) - stop tracing mode, process which is observed will continue execution" << endl << " quit (q) - exit memtrace and process which is observed" << endl <<
+	" help (h) - display help information" << endl;
 	exit(0);
 }
 
@@ -260,21 +274,43 @@ void handle_exiting(pid_t id){
 
 int main(int argc, const char *argv[]){
 	if(argc < 2)
-		exit_with_msg("Proper invocation: ./memtrace command [args].\nFor more informations: ./memtrace -h");
+		exit_with_msg("Proper invocation: ./memtrace command [args].\nFor more information: ./memtrace -h");
 	
-	bool stepping_mode = false;
+	bool stepping_mode = false, follow_threads = false;
 	int command_index = 1;
+	
+	int i = 1;
+	while(i<argc){
+		if(argv[i][0] == '-'){
+			if(i == argc-1)
+				exit_with_msg("!Proper invocation: ./memtrace command [args].\nFor more information: ./memtrace -h");
 
-	if(argv[1][0] == '-'){
-		string s(argv[1]);
-		if(s.find("h") != string::npos)
-			view_help();
-		if(s.find("s") != string::npos)
-			stepping_mode = true;
-
-		if(argc < 3)
-			exit_with_msg("Proper invocation: ./memtrace command [args].\nFor more informations: ./memtrace -h");
-		command_index = 2;
+			string s(argv[i]);
+			if(s.find("h") != string::npos)
+				view_help(); // view_help does not return
+			if(s.find("s") != string::npos)
+				stepping_mode = true;
+			if(s.find("f") != string::npos)
+				follow_threads = true;
+			if(s.find("o") != string::npos){
+				if(i >= argc-2)
+					exit_with_msg("You must specify filename when using -o option");
+				int fd;
+				if((fd = open(argv[i+1], O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) == -1){
+					perror("open error");
+					exit_with_msg("Cannot open file " + string(argv[i+1]));
+				}
+				if(dup2(fd, 2) == -1){ // redirect stderr
+					perror("dup2 error");
+					exit_with_msg("Cannot redirect output to file " + string(argv[i+1]));
+				}
+				i += 2; // add 2 to i, because we omit next argument, which is filename
+			}else
+				++i;
+			
+			command_index = i;
+		}else
+			break;
 	}
 	
 	pid_t id;
