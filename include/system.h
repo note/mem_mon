@@ -1,7 +1,7 @@
 #ifndef SYSTEM_H
 #define SYSTEM_H
 
-#include <mem_mon/system.h>
+#include "system.h"
 #include <unistd.h>
 #include <string>
 
@@ -21,7 +21,7 @@ namespace mem_mon{
 		/*
 		 * Returns size of page in bytes
 		 */
-		inline int get_page_size() const{
+		inline static int get_page_size(){
 			return sysconf(_SC_PAGESIZE);
 		}
 

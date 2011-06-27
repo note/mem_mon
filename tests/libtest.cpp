@@ -31,6 +31,7 @@ int main(int argc, const char *argv[]){
 
 	char buf[256];
 	stack_consuming(buf, 12);
+	pause();
 
 	return 0;
 }

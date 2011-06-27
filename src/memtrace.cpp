@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <sys/wait.h>
 #include <sys/user.h>
-#include "common.h"
+#include "mem_mon.h"
 #include <map>
 #include <sys/mman.h>
 
@@ -46,6 +46,11 @@ class thread{
 	int current_break;
 	bool active;
 	void print_notification(const string & msg);
+	void print_mem_info(){
+		proc.update();
+		cerr << proc;
+	}
+	process proc;
 };
 
 /********** syscall_observers **********/
@@ -192,7 +197,7 @@ class munmap_observer : public syscall_observer{
 
 map<int, thread *> threads;
 
-thread::thread(pid_t pid) : returning(false), observer(NULL), id(pid), current_break(-1), active(false) {}
+thread::thread(pid_t pid) : returning(false), observer(NULL), id(pid), current_break(-1), active(false), proc(pid) {}
 
 /**
  * @return true if any action that user should be notified about was performed
@@ -260,7 +265,8 @@ void exit_with_perror(const char * msg){
 
 void view_console_help(){
 	cout << "memtrace console commands:" << endl << " next (abbraviated: n) - step execution" << endl << " system (sys s) - system memory info" << endl <<
-	" process (proc p) - process memory info" << endl << " run (r) - exit stopping mode, continue tracing, but not in stepping mode" << endl <<
+	" process (proc p) [id] - process memory info. Id specifies which thread memory checks. If no id specified check main thread." << endl << 
+	" continue (cont c) - exit stopping mode, continue tracing, but not in stepping mode" << endl <<
 	" detach (d) - stop tracing mode, process which is observed will continue execution" << endl << " quit (q) - exit memtrace and process which is observed" << endl <<
 	" help (h) - display help information" << endl;
 }
@@ -348,7 +354,8 @@ int main(int argc, const char *argv[]){
 		exit_with_perror("execvp error");
 	}else{
 		wait(NULL);
-
+		
+		pid_t main_thread_id = id;
 		threads[id] = new thread(id);
 		threads[id]->active = true;
 
@@ -362,8 +369,10 @@ int main(int argc, const char *argv[]){
  		if(ptrace(PTRACE_SYSCALL, id, NULL, NULL) == -1)
  			perror("ptrace_syscall");
 		
+
 		int status;
 		bool console = false;
+		mem_mon::system sys = mem_mon::system::get_instance();
 		pid_t child_id;
 		string in;
 		while(1){ // main loop
@@ -403,15 +412,49 @@ int main(int argc, const char *argv[]){
 					threads[id]->print_notification("Received signal number " + str(siginfo.si_signo));
 			}
 
-			while(console){
+			while(console && stepping_mode){
 				cout << "(memtrace) ";
 				cin >> in;
 				if(in == "help" || in == "h"){
 					view_console_help();
 					continue;
 				}
+				if(in == "system" || in == "sys" || in == "s"){
+					sys.update();
+					cout << sys;
+					continue;
+				}
+				if(in == "continue" || in == "cont" || in == "c"){
+					stepping_mode = false;
+					break;
+				}
+				if(in == "detach" || in == "d"){
+					ptrace(PTRACE_DETACH, main_thread_id, NULL, NULL); //todo: do i have to detach all threads manually? maybe user should be able to specify pid?
+					continue;
+				}
 				if(in == "next" || in == "n")
 					break;
+				if(in == "quit" || in =="q"){
+					kill(main_thread_id, SIGINT);
+					exit(0);
+				}
+
+				vector<string> cmds = split(in, " ");
+				if(cmds[0] == "process" || cmds[0] == "proc" || cmds[0] == "p"){
+					int tmp_id;
+					if(cmds.size() > 1){
+						tmp_id = atoi(cmds[1].c_str());
+						if(threads.find(tmp_id) == threads.end()){
+							cout << "Thread with id " + cmds[1] + " does not exist" << endl;
+							continue;
+						}
+					}else
+						tmp_id = main_thread_id;
+					
+					threads[tmp_id]->print_mem_info();
+					continue;
+				}
+
 				cout << "Undefinded command: \"" << in << "\". Try \"help\"" << endl;
 			}
 				

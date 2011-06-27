@@ -3,6 +3,8 @@
 
 #include <iostream>
 #include <vector>
+#include <string>
+#include "common.h"
 
 namespace mem_mon{
 	class abstract_malloc_observer{
@@ -59,12 +61,22 @@ namespace mem_mon{
 			long unsigned virtual_mem_size, stack_size;
 
 			void read_proc_stat();
+
+			/**
+			 * Work similarly to read_proc_stat() without parameter, but read information from /proc/self/task/id/stat file
+			 *
+			 * @param id thread id
+			 */
+			void read_proc_stat(pid_t id);
 			void read_proc_statm();
 			void get_by_getrlimit();
+			private:
+			void read_proc_stat(const std::string & filename);
 		};
 
 		public:
-		process() : timer(NULL){}
+		process() : timer(NULL), thread_id(-1){}
+		process(pid_t id) : timer(NULL), thread_id(id){}
 
 		void update();
 		
@@ -130,6 +142,7 @@ namespace mem_mon{
 		private:
 		process_info res;
 		abstract_timer * timer;
+		pid_t thread_id;
 	};
 }
 

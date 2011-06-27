@@ -1,8 +1,8 @@
 #ifndef MEM_MON_H
 #define MEM_MON_H
 
-#include <mem_mon/process.h>
-#include <mem_mon/system.h>
+#include "./process.h"
+#include "./system.h"
 #include <malloc.h>
 
 

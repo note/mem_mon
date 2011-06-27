@@ -4,6 +4,7 @@
 #include <string>
 #include <sstream>
 #include <string.h>
+#include <vector>
 #include <sys/ptrace.h>
 
 namespace mem_mon{
@@ -31,25 +32,11 @@ namespace mem_mon{
 		}
 	}
 
-	std::string load_string(const pid_t pid, int addr){
-		int in, tmp;
-		char buf[sizeof(int)];
-		std::string res;
-
-		do{
-			tmp = res.length();
-			in = ptrace(PTRACE_PEEKDATA, pid, (void *) addr, NULL);
-			strncpy(buf, (char *) &in, sizeof(int));
-			res.append(buf, 0, sizeof(int));
-			addr += sizeof(int);
-			memset(buf, 0, sizeof(int));
-		}while(res.length()-tmp == sizeof(int));
-
-		return res;
-	}
+	std::string load_string(const pid_t pid, int addr);
+	std::vector<std::string> split(const std::string & str, const std::string & separator);
 	
 	template<class T>
-	std::string format(const T size){
+	inline std::string format(const T size){
 		if(size < 1024)
 			return str(size) + "B";
 		if(size < 1048576) // 1024*1024=1048576
