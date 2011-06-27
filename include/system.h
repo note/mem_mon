@@ -1,7 +1,7 @@
 #ifndef SYSTEM_H
 #define SYSTEM_H
 
-#include "system.h"
+#include <mem_mon/system.h>
 #include <unistd.h>
 #include <string>
 
