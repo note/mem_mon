@@ -301,6 +301,61 @@ void handle_exiting(pid_t id){
 	threads[id]->print_notification("Process is exiting with status: " + str(status));
 }
 
+/**
+ * @param [in] main_thread_id main thread id
+ * @param [out] stepping_mode flag which determine whether memtrace runs in stepping mode
+ */
+void console_loop(pid_t main_thread_id, bool * stepping_mode){
+	string in;
+	mem_mon::system sys = mem_mon::system::get_instance();
+	while(1){
+		cout << "(memtrace) ";
+		cin >> in;
+		if(in == "help" || in == "h"){
+			view_console_help();
+			continue;
+		}
+		if(in == "system" || in == "sys" || in == "s"){
+			sys.update();
+			cout << sys;
+			continue;
+		}
+		if(in == "continue" || in == "cont" || in == "c"){
+			*stepping_mode = false;
+			break;
+		}
+		if(in == "detach" || in == "d"){
+			ptrace(PTRACE_DETACH, main_thread_id, NULL, NULL); //todo: do i have to detach all threads manually? maybe user should be able to specify pid?
+			continue;
+		}
+		if(in == "next" || in == "n")
+			break;
+		if(in == "quit" || in =="q"){
+			kill(main_thread_id, SIGINT);
+			exit(0);
+		}
+
+		vector<string> cmds = split(in, " ");
+		if(cmds[0] == "process" || cmds[0] == "proc" || cmds[0] == "p"){
+			int tmp_id;
+			if(cmds.size() > 1){
+				tmp_id = atoi(cmds[1].c_str());
+				if(threads.find(tmp_id) == threads.end()){
+					cout << "Thread with id " + cmds[1] + " does not exist" << endl;
+					continue;
+				}
+			}else
+				tmp_id = main_thread_id;
+			
+			threads[tmp_id]->print_mem_info();
+			continue;
+		}
+
+		cout << "Undefinded command: \"" << in << "\". Try \"help\"" << endl;
+	}
+}
+
+
 int main(int argc, const char *argv[]){
 	if(argc < 2)
 		exit_with_msg("Proper invocation: ./memtrace command [args].\nFor more information: ./memtrace -h");
@@ -372,9 +427,7 @@ int main(int argc, const char *argv[]){
 
 		int status;
 		bool console = false;
-		mem_mon::system sys = mem_mon::system::get_instance();
 		pid_t child_id;
-		string in;
 		while(1){ // main loop
 			//cout << "MAIN LOOP" << endl;
 			id = waitpid(-1, &status, __WALL); // you must use the __WALL option inorder to receive notifications from threads created by the child process
@@ -404,7 +457,7 @@ int main(int argc, const char *argv[]){
 				if(follow_threads && status>>16 == PTRACE_EVENT_CLONE)
 					child_id = handle_child(id);
 
-				console = threads[id]->received(&regs);
+				console = threads[id]->received(&regs); //console will be true if thread::received() does something that user should be informed about
 			}else{ // real signal was delivered
 				if(siginfo.si_signo == 19 && !threads[id]->active) // new thread is initially stopped with a SIGSTOP, there's no sense in displaying info about this
 					threads[id]->active = true;
@@ -412,52 +465,8 @@ int main(int argc, const char *argv[]){
 					threads[id]->print_notification("Received signal number " + str(siginfo.si_signo));
 			}
 
-			while(console && stepping_mode){
-				cout << "(memtrace) ";
-				cin >> in;
-				if(in == "help" || in == "h"){
-					view_console_help();
-					continue;
-				}
-				if(in == "system" || in == "sys" || in == "s"){
-					sys.update();
-					cout << sys;
-					continue;
-				}
-				if(in == "continue" || in == "cont" || in == "c"){
-					stepping_mode = false;
-					break;
-				}
-				if(in == "detach" || in == "d"){
-					ptrace(PTRACE_DETACH, main_thread_id, NULL, NULL); //todo: do i have to detach all threads manually? maybe user should be able to specify pid?
-					continue;
-				}
-				if(in == "next" || in == "n")
-					break;
-				if(in == "quit" || in =="q"){
-					kill(main_thread_id, SIGINT);
-					exit(0);
-				}
-
-				vector<string> cmds = split(in, " ");
-				if(cmds[0] == "process" || cmds[0] == "proc" || cmds[0] == "p"){
-					int tmp_id;
-					if(cmds.size() > 1){
-						tmp_id = atoi(cmds[1].c_str());
-						if(threads.find(tmp_id) == threads.end()){
-							cout << "Thread with id " + cmds[1] + " does not exist" << endl;
-							continue;
-						}
-					}else
-						tmp_id = main_thread_id;
-					
-					threads[tmp_id]->print_mem_info();
-					continue;
-				}
-
-				cout << "Undefinded command: \"" << in << "\". Try \"help\"" << endl;
-			}
-				
+			if(console && stepping_mode)
+				console_loop(main_thread_id, &stepping_mode);
 			
 			if(ptrace(PTRACE_SYSCALL, id, NULL, NULL) == -1)
 				perror("ptrace_syscall");
