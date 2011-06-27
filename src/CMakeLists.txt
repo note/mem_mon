@@ -1,4 +1,4 @@
-add_library(mem_mon process.cpp system.cpp common.cpp)
+add_library(mem_mon process.cpp system.cpp common.cpp mallinfo_wrapper.cpp)
 
 add_executable (memtrace memtrace.cpp)
 target_link_libraries(memtrace mem_mon)

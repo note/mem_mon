@@ -19,7 +19,7 @@ void stack_consuming(char * arg, int n){
 }
 
 int main(int argc, const char *argv[]){
-	system sys = system::get_instance();
+	mem_mon::system sys = mem_mon::system::get_instance();
 	sys.update();
 //	cout << "Page size: " << sys_res.get_page_size() << endl << "Total RAM: " << sys_res.get_total_ram() << endl << "RAM in use: " << sys_res.get_used_ram() << endl << "Free RAM: " << sys_res.get_free_ram() << endl;
 

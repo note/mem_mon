@@ -311,25 +311,31 @@ void console_loop(pid_t main_thread_id, bool * stepping_mode){
 	while(1){
 		cout << "(memtrace) ";
 		cin >> in;
+		
 		if(in == "help" || in == "h"){
 			view_console_help();
 			continue;
 		}
+
 		if(in == "system" || in == "sys" || in == "s"){
 			sys.update();
 			cout << sys;
 			continue;
 		}
+
 		if(in == "continue" || in == "cont" || in == "c"){
 			*stepping_mode = false;
 			break;
 		}
+
 		if(in == "detach" || in == "d"){
 			ptrace(PTRACE_DETACH, main_thread_id, NULL, NULL); //todo: do i have to detach all threads manually? maybe user should be able to specify pid?
 			continue;
 		}
+
 		if(in == "next" || in == "n")
 			break;
+
 		if(in == "quit" || in =="q"){
 			kill(main_thread_id, SIGINT);
 			exit(0);
@@ -372,10 +378,13 @@ int main(int argc, const char *argv[]){
 
 			if(i == argc-1)
 				exit_with_msg("!Proper invocation: ./memtrace command [args].\nFor more information: ./memtrace -h");
+
 			if(s.find("s") != string::npos)
 				stepping_mode = true;
+
 			if(s.find("f") != string::npos)
 				follow_threads = true;
+
 			if(s.find("o") != string::npos){
 				if(i >= argc-2)
 					exit_with_msg("You must specify filename when using -o option");
@@ -403,8 +412,10 @@ int main(int argc, const char *argv[]){
 	else if(id == 0){
         	ptrace(PTRACE_TRACEME, 0, NULL, NULL);
 		const char ** args = new const char*[argc-command_index];
+
 		for(int i=0; i<argc-command_index; ++i)
 			args[i] = argv[i+command_index];
+
 		execvp(argv[command_index], (char * const *) args);
 		exit_with_perror("execvp error");
 	}else{
@@ -453,6 +464,7 @@ int main(int argc, const char *argv[]){
 			siginfo_t siginfo;
 			ptrace(PTRACE_GETSIGINFO, id, NULL, &siginfo);
 			child_id = -1;
+
 			if(siginfo.si_signo == SIGTRAP){ // action caught by ptrace
 				if(follow_threads && status>>16 == PTRACE_EVENT_CLONE)
 					child_id = handle_child(id);

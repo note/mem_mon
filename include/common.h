@@ -1,4 +1,4 @@
-#ifndef COMMOH_H
+#ifndef COMMON_H
 #define COMMON_H
 
 #include <string>

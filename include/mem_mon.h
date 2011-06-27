@@ -3,6 +3,7 @@
 
 #include "./process.h"
 #include "./system.h"
+#include "./mallinfo_wrapper.h"
 #include <malloc.h>
 
 
