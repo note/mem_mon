@@ -1,0 +1,30 @@
+Title: Instalacja i użytkowanie
+
+---
+
+Budowanie i instalacja są oparte o międzyplatformowy, otwarty system budowy [CMake](http://www.cmake.org/).
+
+
++ Ściągnij najnowszą wersję z [githuba](https://github.com/note/mem_mon/archives/master)
++ Rozpakuj archiwum i wejdź do utworzonego katalogu.
++ `cmake .`
++ `make`
++ `make install` (z konta root)
+
+Od tego momentu monitor możesz uruchomić poleceniem `memtrace`.
+
+Aby móc skorzystać z biblioteki mem_mon wystarczy dołaczyć plik nagłówkowy mem_mon/mon_mon.h oraz skompilować program z flagą -lmem_mon. Wszystkie klasy i funkcje znajdują się w przestrzeni nazw mem_mon. Przykładowy program:
+
+~~~
+#include <mem_mon/mem_mon.h>
+#include <iostream>
+
+using namespace mem_mon;
+using namespace std;
+
+int main(){
+        process proc;
+        proc.update();
+        cout << proc;
+}
+~~~

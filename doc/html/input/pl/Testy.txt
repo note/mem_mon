@@ -1,0 +1,67 @@
+Title: Testy
+
+---
+
+##Domyślne działanie alokatora
+
+Program dokonuje 300 alokacji po 4 kB. Fragment wyjścia `memtrace`:
+
+~~~
+Process is trying to allocate 136KB
+Process has allocated 136KB
+Process is trying to allocate 132KB
+Process has allocated 132KB
+Process is trying to allocate 132KB
+Process has allocated 132KB
+.
+.
+.
+Process is trying to allocate 132KB
+Process has allocated 132KB
+~~~
+
+Przy 300 alokacjach po 40 kB otrzymujemy inny wynik. Jak widać alokator reaguje na taką zmianę i w pojedynczym wywołaniu rezerwuje więcej pamięci.
+
+~~~
+Process is trying to allocate 172KB
+Process has allocated 172KB
+Process is trying to allocate 160KB
+Process has allocated 160KB
+Process is trying to allocate 160KB
+Process has allocated 160KB
+.
+.
+.
+Process is trying to allocate 160KB
+Process has allocated 160KB
+~~~
+
+Przy zwiększeniu pojedynczej alokacji do 400kB otrzymujemy zupełnie inny wynik:
+
+~~~
+Process is trying to create private mapping of size 404KB (anonymous)
+Process has created private mapping of size 404KB (anonymous)
+Process is trying to create private mapping of size 404KB (anonymous)
+Process has created private mapping of size 404KB (anonymous)
+.
+.
+.
+Process is trying to create private mapping of size 404KB (anonymous)
+Process has created private mapping of size 404KB (anonymous)
+~~~
+
+Malloc dla odpowiednio dużych żądań nie korzysta z wywołania brk, ale z mapowania pamięci mmap. Próg, od którego malloc zaczyna mapować można ustawić korzystając z mallopt. Można całkowicie zrezygnować z mapowania wywołując `mallopt(M_MMAP_MAX, 0)`;
+
+~~~
+Process is trying to allocate 532KB
+Process has allocated 532KB
+Process is trying to allocate 400KB
+Process has allocated 400KB
+Process is trying to allocate 400KB
+Process has allocated 400KB
+Process is trying to allocate 400KB
+Process has allocated 400KB
+Process is trying to allocate 400KB
+Process has allocated 400KB
+~~~
+

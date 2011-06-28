@@ -1,0 +1,14 @@
+Title: Biblioteka
+
+---
+
+##Klasa system
+
+
+##Klasa process
+
+Teorytycznie wiele danych o pamięci procesu można uzyskać za pomocą getrusage, ale pod Linuxem większość pól struktury rusage nie jest wypełniana sensownymi informacjami. W manualu można znaleźć informację, że tych pól Linux nie wspiera dla getrusage. W związku z tym informacje dotyczące pamięci procesu pochodzą z katalogu /proc. W momencie, gdy zacząłem pisać monitor oraz chciałem, aby proces miał możliwość odczytywania danych innego procesu odczytywanie danych z pliku zostało jedyną opcją. Dlatego musiałem zrezygnować z getrlimit, gdyż nie ma on parametru określającego pid procesu. Klasa process korzysta z następujących plików:
+
++ */proc/self/statm* - wielkość pamięci wirtualnej, rss, rozmiar kodu, rozmiar bibliotek
++ */proc/self/stat* oraz */proc/self/task/id/stat* - wielkość stosu. Jedyny przypadek, gdy dla różnych wątków trzeba czytać z różnych plików. Spowodowane jest to tym, że stos jest jedynym obszarem pamięci, którego wątki nie współdzielą.
++ */proc/self/limits* - limit wielkości stosu i segmentu danych
