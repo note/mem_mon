@@ -3,6 +3,8 @@ project (mem_mon)
 
 set (VERSION 0.1)
 
+set(CMAKE_EXE_LINKER_FLAGS -static)
+
 add_definitions ("-Wall")
 set(LIBRARY_OUTPUT_PATH "${PROJECT_SOURCE_DIR}/bin")
 set(EXECUTABLE_OUTPUT_PATH "${PROJECT_SOURCE_DIR}/bin")
