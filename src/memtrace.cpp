@@ -28,12 +28,14 @@ class thread;
 class syscall_observer{
 	protected:
 	thread * observed_thread;
+	static int calls_amount;
 	public:
 	syscall_observer(thread * observed_thread) : observed_thread(observed_thread){}
 	virtual bool handle_enter(user_regs_struct * regs) = 0;
 	virtual bool handle_return(user_regs_struct * regs) = 0;
 	virtual ~syscall_observer(){}
 };
+int syscall_observer::calls_amount = 0;
 
 class thread{
 	public:
@@ -58,10 +60,12 @@ class thread{
 class mmap_pgoff_observer : public syscall_observer{
 	int size;
 	int orig_esi;
+	static int calls_amount;
 	public:
 	mmap_pgoff_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 
 	bool handle_enter(user_regs_struct * regs){
+		mmap_pgoff_observer::calls_amount++;
 		size = regs->ecx;
 		filename = descriptors[regs->edi];
 		string msg;
@@ -95,15 +99,25 @@ class mmap_pgoff_observer : public syscall_observer{
 		return true;
 	}
 
+	static int get_calls_amount(){
+		return mmap_pgoff_observer::calls_amount;
+	}
+
 	private:
 	string filename;
 };
+int mmap_pgoff_observer::calls_amount = 0;
+
 
 class brk_observer : public syscall_observer{
+	static int calls_amount;
+	static int allocs_amount;
+	static int deallocs_amount;
 	public:
 	brk_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 	
 	bool handle_enter(user_regs_struct * regs){
+		brk_observer::calls_amount++;
 		int diff = regs->ebx - observed_thread->current_break;
 		if(regs->ebx){ //process is trying to change break
 			if(diff>0)
@@ -118,24 +132,42 @@ class brk_observer : public syscall_observer{
 	bool handle_return(user_regs_struct * regs){
 		int diff = regs->eax-observed_thread->current_break;
 		if(observed_thread->current_break != -1 && diff!=0){
-			if(diff>0)
+			if(diff>0){
+				++allocs_amount;
 				observed_thread->print_notification("Process has allocated " + format(diff));
-			else
+			}else{
+				++deallocs_amount;
 				observed_thread->print_notification("Process has deallocated " + format(-diff));
+			}
 			observed_thread->current_break += diff;
 			return true;
 		}
 		observed_thread->current_break = regs->eax;
 		return false;
 	}
+
+	static int get_calls_amount(){
+		return brk_observer::calls_amount;
+	}
+
+	static int get_extending_amount(){
+		return brk_observer::allocs_amount;
+	}
+
+	static int get_reducing_amount(){
+		return brk_observer::deallocs_amount;;
+	}
 };
+int brk_observer::calls_amount = 0, brk_observer::allocs_amount = 0, brk_observer::deallocs_amount = 0;
 
 class open_observer : public syscall_observer{
+	static int calls_amount;
 	string filename;
 	public:
 
 	open_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 	bool handle_enter(user_regs_struct * regs){
+		open_observer::calls_amount++;
 		filename = load_string(observed_thread->id, regs->ebx);
 		return false;
 	}
@@ -146,14 +178,20 @@ class open_observer : public syscall_observer{
 		return false;
 	}
 
+	static int get_calls_amount(){
+		return open_observer::calls_amount;
+	}
 };
+int open_observer::calls_amount = 0;
 
 class old_mmap_observer : public syscall_observer{
 	mmap_arg_struct mmap_arg;
+	static int calls_amount;
 	public:
 
 	old_mmap_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 	bool handle_enter(user_regs_struct * regs){
+		old_mmap_observer::calls_amount++;
 		load_struct(&mmap_arg, observed_thread->id, regs->ebx);
 		if(descriptors[mmap_arg.fd].find("/dev/shm/") == 0)
 			observed_thread->print_notification("Process is trying to map " + format(mmap_arg.len) + " from shared memory");
@@ -176,13 +214,20 @@ class old_mmap_observer : public syscall_observer{
 		}
 		return true;
 	}
+
+	static int get_calls_amount(){
+		return old_mmap_observer::calls_amount;
+	}
 };
+int old_mmap_observer::calls_amount = 0;
 
 class munmap_observer : public syscall_observer{
+	static int calls_amount;
 	public:
 	
 	munmap_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 	bool handle_enter(user_regs_struct * regs){
+		munmap_observer::calls_amount++;
 		observed_thread->print_notification("Process is trying to unmap " + format(regs->ecx));
 		return true;
 	}
@@ -192,7 +237,12 @@ class munmap_observer : public syscall_observer{
 			observed_thread->print_notification("Process has unmapped " + format(regs->ecx));
 		return true;
 	}
+
+	static int get_calls_amount(){
+		return munmap_observer::calls_amount;
+	}
 };
+int munmap_observer::calls_amount = 0;
 
 /********** end of syscall_observers **********/
 
@@ -269,6 +319,7 @@ void view_console_help(){
 	" process (proc p) [id] - process memory info. Id specifies which thread memory checks. If no id specified check main thread." << endl << 
 	" continue (cont c) - exit stopping mode, continue tracing, but not in stepping mode" << endl <<
 	" detach (d) - stop tracing mode, process which is observed will continue execution" << endl << " quit (q) - exit memtrace and process which is observed" << endl <<
+	" number (num) - print number of each observed syscall" << endl <<
 	" help (h) - display help information" << endl;
 }
 
@@ -276,7 +327,8 @@ void view_help(){
 	cout << "memtrace" << endl << "Copyright Michal Sitko" << endl << endl;
 	cout << "usage: memtrace [-hsfo] command [arg ...]" << endl << "-h display help information" << endl
 	<< "-s stepping mode, memtrace will stop executing and enter memtrace console after calling and returning every syscall" << endl << "-f follow threads created by process being observed" << endl
-	<< "-o file - send memtrace output to file instead of stderr" << endl << endl;
+	<< "-o file - send memtrace output to file instead of stderr" << endl
+	<< "-n at the end print number of each observed syscalls" << endl << endl;
 	view_console_help();
 	exit(0);
 }
@@ -302,11 +354,21 @@ void handle_exiting(pid_t id){
 	threads[id]->print_notification("Process is exiting with status: " + str(status));
 }
 
+void print_syscall_stats(){
+	cerr << "*** syscalls statistics: ***" << endl;
+	cerr << "brk: " << brk_observer::get_calls_amount() << " calls, amongst them:" << endl;
+	cerr << "  " << brk_observer::get_extending_amount() << " extending" << endl;
+	cerr << "  " << brk_observer::get_reducing_amount() << " reducing" << endl;
+	cerr << "mmap_pgoff: " << mmap_pgoff_observer::get_calls_amount() << " calls" << endl;
+	cerr << "old_mmap: " << old_mmap_observer::get_calls_amount() << " calls" << endl;
+	cerr << "munmap: " << munmap_observer::get_calls_amount() << " calls" << endl;
+}
+
 /**
  * @param [in] main_thread_id main thread id
  * @param [out] stepping_mode flag which determine whether memtrace runs in stepping mode
  */
-void console_loop(pid_t main_thread_id, bool * stepping_mode){
+void console_loop(pid_t main_thread_id, bool * stepping_mode, bool show_stats){
 	string in;
 	mem_mon::system sys = mem_mon::system::get_instance();
 	while(1){
@@ -331,14 +393,21 @@ void console_loop(pid_t main_thread_id, bool * stepping_mode){
 
 		if(in == "detach" || in == "d"){
 			ptrace(PTRACE_DETACH, main_thread_id, NULL, NULL); //todo: do i have to detach all threads manually? maybe user should be able to specify pid?
+			if(show_stats)
+				print_syscall_stats();
 			continue;
 		}
 
 		if(in == "next" || in == "n")
 			break;
 
+		if(in == "number" || in == "num")
+			print_syscall_stats();
+
 		if(in == "quit" || in =="q"){
 			kill(main_thread_id, SIGINT);
+			if(show_stats)
+				print_syscall_stats();
 			exit(0);
 		}
 
@@ -367,7 +436,7 @@ int main(int argc, const char *argv[]){
 	if(argc < 2)
 		exit_with_msg("Proper invocation: ./memtrace command [args].\nFor more information: ./memtrace -h");
 	
-	bool stepping_mode = false, follow_threads = false;
+	bool stepping_mode = false, follow_threads = false, show_stats;
 	int command_index = 1;
 	
 	int i = 1;
@@ -385,6 +454,9 @@ int main(int argc, const char *argv[]){
 
 			if(s.find("f") != string::npos)
 				follow_threads = true;
+
+			if(s.find("n") != string::npos)
+				show_stats = true;
 
 			if(s.find("o") != string::npos){
 				if(i >= argc-2)
@@ -479,13 +551,16 @@ int main(int argc, const char *argv[]){
 			}
 
 			if(console && stepping_mode)
-				console_loop(main_thread_id, &stepping_mode);
+				console_loop(main_thread_id, &stepping_mode, show_stats);
 			
 			if(ptrace(PTRACE_SYSCALL, id, NULL, NULL) == -1)
 				perror("ptrace_syscall");
 		}
 
 	}
+
+	if(show_stats)
+		print_syscall_stats();
 
 	return 0;
 }

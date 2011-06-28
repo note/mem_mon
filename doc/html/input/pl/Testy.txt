@@ -50,7 +50,7 @@ Process is trying to create private mapping of size 404KB (anonymous)
 Process has created private mapping of size 404KB (anonymous)
 ~~~
 
-Malloc dla odpowiednio dużych żądań nie korzysta z wywołania brk, ale z mapowania pamięci mmap. Próg, od którego malloc zaczyna mapować można ustawić korzystając z mallopt. Można całkowicie zrezygnować z mapowania wywołując `mallopt(M_MMAP_MAX, 0)`;
+Malloc dla odpowiednio dużych żądań nie korzysta z wywołania brk, ale z mapowania pamięci mmap. Próg, od którego malloc zaczyna mapować można ustawić korzystając z **mallopt**. Można całkowicie zrezygnować z mapowania wywołując `mallopt(M_MMAP_MAX, 0)`;
 
 ~~~
 Process is trying to allocate 532KB
@@ -65,3 +65,21 @@ Process is trying to allocate 400KB
 Process has allocated 400KB
 ~~~
 
+##Konfiguracja alokatora przy pomocy mallopt
+
+Istotne parametry mallopt:
+
++ M_MXFAST - wolne kawałki, które są większe niż ta wartość są łączone.
++ M_TRIM_THRESHOLD - nieużywana pamięć jest zwracana do systemu operacyjnego, gdy jej wielkość przekracza tę wartość. Nie zawsze zwrócenie pamięci jest możliwe, jest tak np. jeśli na szczycie segmentu danych znajduje się używany blok. Małe wartości spowodują czestsze zwracanie pamięci do systemu co zaowocuje mniejszym zużyciem pamięci, jednak obarczone to będzie koniecznością wykonania większej ilości wywołań systemowych.
++ M_TOP_PAD - podana wartość określa wielkość pamięci, która będzie zaalokowana w dodatku do pamięci, która jest niezbędna do wykonania żądania
++M_MMAP_THRESHOLD - próg od którego malloc zaczyna korzystać z mmap() zamiast z brk()
+
+##Wyniki testów
+
+Przetestowałem 3 konfiguracje alokatora.
+
++ small, nastawiona na małe zużycie pamięci
++ fast, nastawiona na prędkość działania
++ fastest, nastawiona wyłącznie na prędkość działania
+
+Dla programu `perf.cpp` (wszystkie pliki testowe znajdują się w katalogu `tests`):

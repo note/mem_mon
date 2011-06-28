@@ -55,9 +55,9 @@ namespace mem_mon{
 
 	class process{
 		struct process_info{
-			int stack_limit, data_segment_limit;
-			signed long rss;
-			unsigned int shared_mem_size, code_size, lib_size;
+			unsigned long stack_limit, data_segment_limit;
+			unsigned long rss;
+			long unsigned shared_mem_size, code_size, lib_size;
 			long unsigned virtual_mem_size, stack_size;
 
 			void read_proc_stat();
@@ -80,44 +80,44 @@ namespace mem_mon{
 
 		void update();
 		
-		int get_virtual_mem_size() const{
+		long unsigned get_virtual_mem_size() const{
 			return res.virtual_mem_size;
 		}
 
-		int get_rss() const{
+		long unsigned get_rss() const{
 			return res.rss;
 		}
 
-		int get_shared_mem_size() const{
+		long unsigned get_shared_mem_size() const{
 			return res.shared_mem_size;
 		}
 
-		int get_code_size() const{
+		long unsigned get_code_size() const{
 			return res.code_size;
 		}
 
-		int get_lib_size() const{
+		long unsigned get_lib_size() const{
 			return res.lib_size;
 		}
 
-		int get_mapped_mem_size() const;
+		long unsigned get_mapped_mem_size() const;
 
-		int get_stack_limit() const{
+		long unsigned get_stack_limit() const{
 			return res.stack_limit;
 		}
 
 		/*
 		 * Returns the maximum size of the process's data segment (initialized data, uninitalized data and heap).
 		 */
-		int get_data_segment_limit() const{
+		long unsigned get_data_segment_limit() const{
 			return res.data_segment_limit;
 		}
 
 		/*
 		 * It can works only with known allocators
 		 */
-		int get_heap_in_use_size() const;
-		int get_stack_size() const{
+		long unsigned get_heap_in_use_size() const;
+		long unsigned get_stack_size() const{
 			return res.stack_size;
 		}
 

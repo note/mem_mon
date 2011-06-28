@@ -37,9 +37,9 @@ namespace mem_mon{
 	
 	template<class T>
 	inline std::string format(const T size){
-		if(size < 1024)
+		if(size < 5120) // 5120 = 5*1024. there's no sense in printing 2kB when size==3000. I suppose for bigger than 5kB resolution in bytes is not neccessary
 			return str(size) + "B";
-		if(size < 1048576) // 1024*1024=1048576
+		if(size < 1048576*5) // 1024*1024=1048576
 			return str(size/1024) + "KB";
 		return str(size/(1024*1024)) + "MB";
 	}
