@@ -50,7 +50,7 @@ Process is trying to create private mapping of size 404KB (anonymous)
 Process has created private mapping of size 404KB (anonymous)
 ~~~
 
-Malloc dla odpowiednio dużych żądań nie korzysta z wywołania brk, ale z mapowania pamięci mmap. Próg, od którego malloc zaczyna mapować można ustawić korzystając z **mallopt**. Można całkowicie zrezygnować z mapowania wywołując `mallopt(M_MMAP_MAX, 0)`;
+Malloc dla odpowiednio dużych żądań nie korzysta z wywołania brk, ale z mapowania pamięci mmap. Próg, od którego malloc zaczyna mapować można ustawić korzystając z **mallopt**. Można całkowicie zrezygnować z mapowania wywołując `mallopt(M_MMAP_MAX, 0)`:
 
 ~~~
 Process is trying to allocate 532KB
@@ -59,8 +59,9 @@ Process is trying to allocate 400KB
 Process has allocated 400KB
 Process is trying to allocate 400KB
 Process has allocated 400KB
-Process is trying to allocate 400KB
-Process has allocated 400KB
+.
+.
+.
 Process is trying to allocate 400KB
 Process has allocated 400KB
 ~~~
@@ -76,10 +77,46 @@ Istotne parametry mallopt:
 
 ##Wyniki testów
 
-Przetestowałem 3 konfiguracje alokatora.
+Przetestowałem 4 konfiguracje alokatora.
 
-+ small, nastawiona na małe zużycie pamięci
 + fast, nastawiona na prędkość działania
+
+~~~
+mallopt(M_TRIM_THRESHOLD, -1);
+~~~
+
 + fastest, nastawiona wyłącznie na prędkość działania
 
+~~~
+mallopt(M_TRIM_THRESHOLD, -1);
+mallopt(M_TOP_PAD, 4096*1000);
+~~~
+
++ small, nastawiona na małe zużycie pamięci
+
+~~~
+mallopt(M_TRIM_THRESHOLD, 100);
+~~~
+
++ smallest, nastawiona wyłącznie na małe zużycie pamięci
+
+~~~
+mallopt(M_TRIM_THRESHOLD, 1024*40);
+~~~
+
+
 Dla programu `perf.cpp` (wszystkie pliki testowe znajdują się w katalogu `tests`):
+
+Konfiguracja | Czas | brk rozszerzających | brk zmniejszających | virtual memory size
+- | - | - | - | -
+fast|  0.324s | 3043 | 0 | 396MB
+fastest  | 0.312s | 102 | 0 | 399MB
+small | 0.466s | 5998 | 97562 | 4400KB
+smallest | 0.472s | 5988 | 97562 | 4004KB
+
+##Planowane testy
+
+Niestety nie zdążyłem przeprowadzić tylu testów ile chciałem. Spowodowane jest to faktem, że skupiłem się głównie na części implementacyjnej zadania. Jak widać po wynikach prostego testu, który przeprowadziłem konfiguracja alokatora ma bardzo duże znaczenie dla wydajności aplikacji i warto by zbadać dokładniej tą tematyke oraz spróbować zauważyc pewne regularności, które pomogłyby w konfigurowaniu alokatora pod konkretne zastosowanie. Chciałem również przetestować prawdziwe aplikacje. Nie wykluczam również napisania własnego alokatora, aby mieć całkowitą kontrolę nad alokacją i zwracaniem pamięci do systemu.
+
+##Środowisko
+Wszystkie testy przeprowadzono na Linuxie z jądrem 2.6.34-gentoo-r1, Intel(R) Core(TM)2 Duo CPU T9600 @ 2.80GHz.

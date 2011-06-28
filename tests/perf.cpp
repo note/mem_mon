@@ -16,11 +16,12 @@ void config_fastest(){
 
 void config_smallest(){
 	mallopt(M_TRIM_THRESHOLD, 100);
+	cout << "!!!!!!!!!!smallest" << endl;
 }
-
 
 void config_small(){
 	mallopt(M_TRIM_THRESHOLD, 1024*40);
+	cout << "!!!!!!!!!!small" << endl;
 }
 
 int main(int argc, const char *argv[]){
@@ -39,7 +40,7 @@ int main(int argc, const char *argv[]){
 	
 	const int chunks = 400000;
 	const int step = 200;
-	const int chunk_size = 512;
+	const int chunk_size = 2048;
 	int * ptrs[chunks+2];
 
 	for(int i=0; i<chunks; ++i)
@@ -58,20 +59,17 @@ int main(int argc, const char *argv[]){
 		cnt = tmp;
 	}
 
-// 	for(int i=0; i<chunks; ++i)
-// 		if(ptrs[i])
-// 			free(ptrs[i]);
-
 	for(int i=0; i<chunks; ++i)
-		if(!ptrs[i])
-			ptrs[i] = (int *) malloc(chunk_size*8);
+		if(ptrs[i])
+			free(ptrs[i]);
+
+// 	for(int i=0; i<chunks; ++i)
+// 		if(!ptrs[i])
+// 			ptrs[i] = (int *) malloc(chunk_size*8);
 
 	process proc;
 	proc.update();
 	cout << proc;
-
-// 	for(int i=0; i<chunks; ++i)
-// 		free(ptrs[i]);
 
 	return 0;
 }

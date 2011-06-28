@@ -1,4 +1,11 @@
 Title: Bibliografia
 
 ---
-http://www.gnu.org/s/hello/manual/libc/Efficiency-and-Malloc.html#Efficiency-and-Malloc
+
++ [Strona developerów Go](http://code.google.com/p/go/source/browse/src/pkg/debug/proc/ptrace-nptl.txt?r=7afea75128a67b404c087b20a7b704a5480a2178) - dokładny i konkretny opis śledzenia aplikacji wielowątkowych ptrace'em
++ [Advanced Memory Allocation](http://www.linuxjournal.com/node/6390/print) - opis segmentów pamięci oraz omówienie mallinfo i mallopt
++ [Understanding memory](http://www.ualberta.ca/CNS/RESEARCH/LinuxClusters/mem.html) - wiadomości nt. pamięci wirtualnej, stronicowania pamięci
++ [Rozdział o alokacji z manuala GNU](http://www.gnu.org/s/hello/manual/libc/Unconstrained-Allocation.html#Unconstrained-Allocation)
++ [Tabela wywołań systemowych](http://syscalls.kernelgrok.com/)
++ [http://www.win.tue.nl/~aeb/linux/lk/lk-4.html](http://www.win.tue.nl/~aeb/linux/lk/lk-4.html) - informacje nt. wywołań systemowych
++ [http://stackoverflow.com/questions/3523708/ptraceing-multithread-application](http://stackoverflow.com/questions/3523708/ptraceing-multithread-application) - jeszcze trochę nt. śledzenia aplikacji wielowątkowych.
