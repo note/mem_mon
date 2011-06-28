@@ -11,12 +11,35 @@ long ptrace(enum __ptrace_request request, pid_t pid, void *addr, void *data);
 
 Dzięki ptrace proces rodzicielski może obserwować oraz kontrolować wykonanie procesu potomnego. Memtrace uruchamia program podany jako argument i oznacza go jako śledzony. Przed każdym wywołaniem funkcji systemowej w śledzonym procesie zostaje on zatrzymany, a sterowanie przechodzi do procesu macierzystego. To samo dzieje się przy powrocie z funkcji systemowej. Proces śledzący ma dostęp do rejestrów śledzonego, więc może uzyskać informacje o tym jaka funkcja i z jakimi parametrami została wywołana. Wywołania systemowe, które są obserwowane przez memtrace i mogą zmienić rozmiar dostępnej procesowi pamięci:
 
-+ brk (eax=45) - zmienia rozmiar segmentu danych procesu (tę funkcję najczęsciej woła malloc, gdy potrzebna jest alokacja pamięci z systemu)
++ sys_brk (eax=45) - zmienia rozmiar segmentu danych procesu (tę funkcję najczęsciej woła malloc, gdy potrzebna jest alokacja pamięci z systemu)
 + sys_old_mmap (eax=90) - mapowanie pamięci
 + sys_mmap_pgoff (eax=192) - mapowanie pamięci
-+ munmap (eax=91) - usunięcie mapowania
++ sys_munmap (eax=91) - usunięcie mapowania
 
-Dodatkowo obserwowane są inne wywołania, aby potrafić rozróżnić między mapowaniem pamięci z pliku i mapowaniem pamięci wspódzielonej.
+Dodatkowo obserwowane jest wywołanie sys_open (eax=5), dzięki czemu możliwe jest określenie nazwy pliku dla którego wykonywane jest mapowanie. Nie jest konieczne obserwowanie sys_close, gdyż zadaniem programu nie jest trzymanie listy otwartych deskryptorów ani powiadamianie o błędach. Jeśli plik zostanie zamknięty, a następnie inny otwarty i zostanie mu przydzielony deskryptor poprzedniego pliku memtrace obsłuży taką sytuację. Oprócz śledzenia wywołań systemowych memtrace zbiera informacje o otrzymanych sygnałach.
+
+Przy implementacji obsługi wywołań systemowych bardzo przydatna była [tabela](http://syscalls.kernelgrok.com/) z ich opisami. Parametry są przekazywane kolejno w następujacych rejestrach: EBX, ECX, EDX, ESI, EDI, EBP. Wynik zwracany jest prawie zawsze w rejestrze EAX. Błędy są sygnalizowane zwracanymi wartościami z przedziału [-125, -1].
+
+##Parametry wywołania
+
++ -h wyświetla pomoc
++ -s tryb krokowy, memtrace zatrzyma się przed wywołaniem i powrotem każdej funkcji systemowej i otworzy konsolę memtrace
++ -f śledzi wątki tworzone przez obserwowane wątki (wątki potomne są również śledzone)
++ -o plik - wysyła wyjście memtrace'a do pliku o podanej nazwie zamiast na wyjście diagnostyczne
+
+##Komendy konsoli memtrace
+
++ next (skrót: n) - wykonaj kolejny krokowy
++ system (sys s) - wyświetl informacje o pamięci systemu
++ process (proc p) [id] - wyświetl informacje o pamięci wątku. id wskazuje na wątek, który ma być sprawdzony. W przypadku braku podanego id jest to główny wątek.
++ continue (cont c) - wyjdź z trybu krokowego kontynuując śledzenie przebiegu procesu
++ detach - przerwij śledzenie przebiegu procesu nie przerywając działania procesu
++ quit - przerwij śledzenie oraz działanie procesu
++ help - wyświetl pomoc
+
+##Śledzenie programów wielowątkowych
+
+Największym wyzwaniem w implementacji monitora było śledzenie programów wielowątkowych.
 
 ##Mapowanie pamięci z pliku
 

@@ -1,2 +1,6 @@
 Wprowadzenie
+Biblioteka
 Monitor
+Testy
+Instalacja
+Bibliografia

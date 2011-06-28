@@ -122,6 +122,7 @@ class brk_observer : public syscall_observer{
 				observed_thread->print_notification("Process has allocated " + format(diff));
 			else
 				observed_thread->print_notification("Process has deallocated " + format(-diff));
+			observed_thread->current_break += diff;
 			return true;
 		}
 		observed_thread->current_break = regs->eax;
@@ -274,7 +275,7 @@ void view_console_help(){
 void view_help(){
 	cout << "memtrace" << endl << "Copyright Michal Sitko" << endl << endl;
 	cout << "usage: memtrace [-hsfo] command [arg ...]" << endl << "-h display help information" << endl
-	<< "-s stepping mode, memtrace will stop executing and enter memtrace console after every syscall" << endl << "-f follow threads created by process being observed" << endl
+	<< "-s stepping mode, memtrace will stop executing and enter memtrace console after calling and returning every syscall" << endl << "-f follow threads created by process being observed" << endl
 	<< "-o file - send memtrace output to file instead of stderr" << endl << endl;
 	view_console_help();
 	exit(0);
