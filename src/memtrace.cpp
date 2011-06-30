@@ -25,17 +25,29 @@ bool is_ok(const int status){
 
 class thread;
 
+template <class T>
+struct mixin{
+	static int get_calls_amount(){
+		return calls_amount;
+	}
+
+	protected:
+	static int calls_amount;
+	static void increase(){
+		++calls_amount;
+	}
+};
+template <class T> int mixin<T>::calls_amount = 0;
+
 class syscall_observer{
 	protected:
 	thread * observed_thread;
-	static int calls_amount;
 	public:
 	syscall_observer(thread * observed_thread) : observed_thread(observed_thread){}
 	virtual bool handle_enter(user_regs_struct * regs) = 0;
 	virtual bool handle_return(user_regs_struct * regs) = 0;
 	virtual ~syscall_observer(){}
 };
-int syscall_observer::calls_amount = 0;
 
 class thread{
 	public:
@@ -57,15 +69,14 @@ class thread{
 
 /********** syscall_observers **********/
 
-class mmap_pgoff_observer : public syscall_observer{
+class mmap_pgoff_observer : public syscall_observer, public mixin<mmap_pgoff_observer>{
 	int size;
 	int orig_esi;
-	static int calls_amount;
 	public:
 	mmap_pgoff_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 
 	bool handle_enter(user_regs_struct * regs){
-		mmap_pgoff_observer::calls_amount++;
+		increase();
 		size = regs->ecx;
 		filename = descriptors[regs->edi];
 		string msg;
@@ -99,25 +110,18 @@ class mmap_pgoff_observer : public syscall_observer{
 		return true;
 	}
 
-	static int get_calls_amount(){
-		return mmap_pgoff_observer::calls_amount;
-	}
-
 	private:
 	string filename;
 };
-int mmap_pgoff_observer::calls_amount = 0;
 
-
-class brk_observer : public syscall_observer{
-	static int calls_amount;
+class brk_observer : public syscall_observer, public mixin<brk_observer>{
 	static int allocs_amount;
 	static int deallocs_amount;
 	public:
 	brk_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 	
 	bool handle_enter(user_regs_struct * regs){
-		brk_observer::calls_amount++;
+		increase();
 		int diff = regs->ebx - observed_thread->current_break;
 		if(regs->ebx){ //process is trying to change break
 			if(diff>0)
@@ -146,10 +150,6 @@ class brk_observer : public syscall_observer{
 		return false;
 	}
 
-	static int get_calls_amount(){
-		return brk_observer::calls_amount;
-	}
-
 	static int get_extending_amount(){
 		return brk_observer::allocs_amount;
 	}
@@ -158,16 +158,15 @@ class brk_observer : public syscall_observer{
 		return brk_observer::deallocs_amount;;
 	}
 };
-int brk_observer::calls_amount = 0, brk_observer::allocs_amount = 0, brk_observer::deallocs_amount = 0;
+int brk_observer::allocs_amount = 0, brk_observer::deallocs_amount = 0;
 
-class open_observer : public syscall_observer{
-	static int calls_amount;
+class open_observer : public syscall_observer, mixin<open_observer>{
 	string filename;
 	public:
 
 	open_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 	bool handle_enter(user_regs_struct * regs){
-		open_observer::calls_amount++;
+		increase();
 		filename = load_string(observed_thread->id, regs->ebx);
 		return false;
 	}
@@ -177,21 +176,16 @@ class open_observer : public syscall_observer{
 			descriptors[regs->eax] = filename;
 		return false;
 	}
-
-	static int get_calls_amount(){
-		return open_observer::calls_amount;
-	}
 };
-int open_observer::calls_amount = 0;
 
-class old_mmap_observer : public syscall_observer{
+class old_mmap_observer : public syscall_observer, public mixin<old_mmap_observer>{
 	mmap_arg_struct mmap_arg;
 	static int calls_amount;
 	public:
 
 	old_mmap_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 	bool handle_enter(user_regs_struct * regs){
-		old_mmap_observer::calls_amount++;
+		increase();
 		load_struct(&mmap_arg, observed_thread->id, regs->ebx);
 		if(descriptors[mmap_arg.fd].find("/dev/shm/") == 0)
 			observed_thread->print_notification("Process is trying to map " + format(mmap_arg.len) + " from shared memory");
@@ -214,20 +208,15 @@ class old_mmap_observer : public syscall_observer{
 		}
 		return true;
 	}
-
-	static int get_calls_amount(){
-		return old_mmap_observer::calls_amount;
-	}
 };
-int old_mmap_observer::calls_amount = 0;
 
-class munmap_observer : public syscall_observer{
+class munmap_observer : public syscall_observer, public mixin<munmap_observer>{
 	static int calls_amount;
 	public:
 	
 	munmap_observer(thread * observed_thread) : syscall_observer(observed_thread){}
 	bool handle_enter(user_regs_struct * regs){
-		munmap_observer::calls_amount++;
+		increase();
 		observed_thread->print_notification("Process is trying to unmap " + format(regs->ecx));
 		return true;
 	}
@@ -237,12 +226,7 @@ class munmap_observer : public syscall_observer{
 			observed_thread->print_notification("Process has unmapped " + format(regs->ecx));
 		return true;
 	}
-
-	static int get_calls_amount(){
-		return munmap_observer::calls_amount;
-	}
 };
-int munmap_observer::calls_amount = 0;
 
 /********** end of syscall_observers **********/
 
@@ -356,7 +340,7 @@ void handle_exiting(pid_t id){
 
 void print_syscall_stats(){
 	cerr << "*** syscalls statistics: ***" << endl;
-	cerr << "brk: " << brk_observer::get_calls_amount() << " calls, amongst them:" << endl;
+	cerr << "jrk: " << brk_observer::get_calls_amount() << " calls, amongst them:" << endl;
 	cerr << "  " << brk_observer::get_extending_amount() << " extending" << endl;
 	cerr << "  " << brk_observer::get_reducing_amount() << " reducing" << endl;
 	cerr << "mmap_pgoff: " << mmap_pgoff_observer::get_calls_amount() << " calls" << endl;
